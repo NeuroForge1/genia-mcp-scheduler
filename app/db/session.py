@@ -1,5 +1,6 @@
 # Database session management
 
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -20,5 +21,12 @@ def get_db():
 
 def create_db_and_tables():
     # This function will be called on startup to create tables if they don't exist
+    print(f"DIAGNOSTIC_LOG: DATABASE_URL from settings: {settings.DATABASE_URL}")
+    print(f"DIAGNOSTIC_LOG: SCHEDULER_DATABASE_URL from settings: {settings.SCHEDULER_DATABASE_URL}")
+    # Also print directly from environment variables for comparison, if they exist
+    db_url_env = os.getenv("DATABASE_URL")
+    scheduler_db_url_env = os.getenv("SCHEDULER_DATABASE_URL")
+    print(f"DIAGNOSTIC_LOG: DATABASE_URL from os.getenv: {db_url_env}")
+    print(f"DIAGNOSTIC_LOG: SCHEDULER_DATABASE_URL from os.getenv: {scheduler_db_url_env}")
     Base.metadata.create_all(bind=engine)
 
