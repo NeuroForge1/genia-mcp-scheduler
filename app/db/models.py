@@ -15,25 +15,21 @@ class ScheduledTaskTable(Base):
     task_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) # For SQLite compatibility
     genia_user_id = Column(String, index=True, nullable=False)
     
-    # Store platform_identifier as JSON or individual columns
-    # For simplicity with varied structure, JSON might be easier initially
-    # platform_identifier_json = Column(JSON, nullable=False) 
-    # Or as separate columns:
     platform_name = Column(SQLAlchemyEnum(TargetPlatform), nullable=False)
     account_id = Column(String, nullable=False) # Account ID on the target platform
 
     scheduled_at_utc = Column(DateTime, nullable=False, index=True)
     status = Column(SQLAlchemyEnum(ScheduledTaskStatus), nullable=False, default=ScheduledTaskStatus.PENDING, index=True)
     
-    # Store task_payload and user_platform_tokens as JSON
-    # These can have varied structures depending on the target MCP and platform
-    task_payload_json = Column(Text, nullable=False) # Using Text for potentially large JSON, or JSON type if DB supports well
-    user_platform_tokens_json = Column(Text, nullable=False) # Encrypted if containing sensitive tokens, though tokens are passed by orchestrator
+    task_payload_json = Column(Text, nullable=False) 
+    user_platform_tokens_json = Column(Text, nullable=False) 
 
     created_at_utc = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at_utc = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
-    execution_result_json = Column(Text, nullable=True) # Store execution result (success/failure details) as JSON string
+    execution_result_json = Column(Text, nullable=True) 
+
+    task_type = Column(String, nullable=True, index=True, default="generic_task") # Added task_type field
 
     def __repr__(self):
-        return f"<ScheduledTaskTable(task_id=\'{self.task_id}\'{self.status}\')>"
+        return f"<ScheduledTaskTable(task_id=\\'{self.task_id}\\' status=\\'{self.status}\\' type=\\'{self.task_type}\\')>"
 
