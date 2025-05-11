@@ -13,6 +13,7 @@ class TargetPlatform(str, Enum):
     FACEBOOK = "facebook"
     INSTAGRAM = "instagram"
     WORDPRESS = "wordpress"
+    EMAIL = "email" # Added for Email MCP
 
 class ScheduledTaskStatus(str, Enum):
     PENDING = "pending"
@@ -23,20 +24,20 @@ class ScheduledTaskStatus(str, Enum):
 
 class PlatformIdentifier(BaseModel):
     platform_name: TargetPlatform
-    account_id: str # ID of the account specific to that platform (e.g., LinkedIn URN, X user ID, FB Page ID)
+    account_id: str # ID of the account specific to that platform (e.g., LinkedIn URN, X user ID, FB Page ID, or GENIA user ID for generic email)
 
 class ScheduledTaskPayload(BaseModel):
     # This payload will be specific for each MCP of platform
-    # Example generic, each MCP of platform will define its own payload expected
-    mcp_target_endpoint: str # e.g., "/linkedin/publish", "/x/tweet"
+    mcp_target_endpoint: str # e.g., "/linkedin/publish", "/x/tweet", "/email/send"
     mcp_request_body: Dict[str, Any] # The body of the request for the target MCP
-    user_platform_tokens: Dict[str, Any] # Tokens for the specific platform, e.g. LinkedInUserTokens, XUserTokens
+    user_platform_tokens: Dict[str, Any] # Tokens for the specific platform, or could be empty for internal MCP calls
 
 class CreateScheduledTaskRequest(BaseModel):
     genia_user_id: str # ID of the GENIA user to associate the task
     platform_identifier: PlatformIdentifier
     scheduled_at_utc: datetime.datetime # Publication date and time in UTC
     task_payload: ScheduledTaskPayload
+    task_type: str = Field(default="generic_task") # Added to help categorize tasks if needed beyond platform
 
 class ScheduledTaskBase(CreateScheduledTaskRequest):
     task_id: str = Field(..., examples=["task_123"])

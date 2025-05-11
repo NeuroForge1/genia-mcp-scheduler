@@ -6,7 +6,8 @@ import json # For serializing/deserializing JSON fields for DB
 import logging # Added for more detailed logging
 from typing import List, Optional, Dict, Any
 
-from fastapi import Depends
+import httpx # For making async HTTP calls to other MCPs
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -49,7 +50,6 @@ class SchedulerService:
                 logger.info("APScheduler: scheduler.start() called successfully. Current state: running={scheduler.running}")
             except Exception as e:
                 logger.error(f"APScheduler: Error during scheduler.start(): {e}", exc_info=True)
-                # Handle cases where scheduler might be already started in a different context (e.g. multiple workers)
                 if "SchedulerInstance" not in str(e):
                     logger.warning(f"APScheduler: Error starting APScheduler that is not 'SchedulerInstance' related: {e}")
                 elif not scheduler.running:
@@ -61,7 +61,7 @@ class SchedulerService:
 
     async def create_task(self, task_in: CreateScheduledTaskRequest) -> Optional[ScheduledTaskTable]:
         task_id = str(uuid.uuid4())
-        logger.info(f"SchedulerService: create_task called for task_id (generated): {task_id}")
+        logger.info(f"SchedulerService: create_task called for task_id (generated): {task_id}, type: {task_in.task_type}")
         
         db_task = ScheduledTaskTable(
             task_id=task_id,
@@ -74,7 +74,8 @@ class SchedulerService:
             status=ScheduledTaskStatus.PENDING,
             created_at_utc=datetime.datetime.utcnow(),
             updated_at_utc=datetime.datetime.utcnow(),
-            execution_result_json=None
+            execution_result_json=None,
+            task_type=task_in.task_type
         )
         self.db.add(db_task)
         self.db.commit()
@@ -95,6 +96,7 @@ class SchedulerService:
             logger.info(f"APScheduler: Job {task_id} added successfully to scheduler for {db_task.scheduled_at_utc}")
         except Exception as e:
             logger.error(f"APScheduler: Error adding job {task_id} to scheduler: {e}", exc_info=True)
+            # Consider marking task as FAILED_TO_SCHEDULE or raising an error
             pass
 
         return db_task
@@ -182,23 +184,61 @@ class SchedulerService:
         await self.update_task_status_in_db(task_id, ScheduledTaskStatus.RUNNING, db_session=db_session)
 
         task_payload_dict = json.loads(task.task_payload_json)
-        mcp_target_path = task_payload_dict.get("mcp_target_endpoint")
-        # mcp_request_body = task_payload_dict.get("mcp_request_body") # Not used in placeholder
+        mcp_target_endpoint_path = task_payload_dict.get("mcp_target_endpoint")
+        mcp_request_body = task_payload_dict.get("mcp_request_body")
+        # user_platform_tokens = task_payload_dict.get("user_platform_tokens") # May be needed for some MCPs
 
-        logger.info(f"SchedulerService: Simulating call to target MCP for task {task_id}: Endpoint {mcp_target_path}. Placeholder execution.")
-        import time
-        time.sleep(1) 
-        mock_result = {"status": "successfully executed by target MCP (simulated placeholder)", "details": f"Called {mcp_target_path}"}
-        await self.update_task_status_in_db(task_id, ScheduledTaskStatus.COMPLETED, result=mock_result, db_session=db_session)
-        logger.info(f"SchedulerService: Task {task_id} marked as COMPLETED (simulated placeholder) in DB.")
+        target_mcp_base_url = self._get_mcp_base_url(TargetPlatform(task.platform_name)) # Get base URL from config
+
+        if not target_mcp_base_url:
+            logger.error(f"SchedulerService: Target MCP base URL not configured for platform {task.platform_name} (task {task_id}).")
+            await self.update_task_status_in_db(task_id, ScheduledTaskStatus.FAILED, result={"error": f"Target MCP base URL not configured for platform {task.platform_name}"}, db_session=db_session)
+            return
+        
+        full_target_url = f"{target_mcp_base_url.rstrip('/')}/{mcp_target_endpoint_path.lstrip('/')}"
+        logger.info(f"SchedulerService: Calling target MCP for task {task_id}. URL: {full_target_url}")
+
+        headers = {
+            "Authorization": f"Bearer {settings.MCP_API_TOKEN_SECRET}", # This MCP's token to call other MCPs
+            "Content-Type": "application/json"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(full_target_url, json=mcp_request_body, headers=headers)
+                response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+                
+                execution_result = response.json()
+                await self.update_task_status_in_db(task_id, ScheduledTaskStatus.COMPLETED, result=execution_result, db_session=db_session)
+                logger.info(f"SchedulerService: Task {task_id} executed successfully by target MCP. Result: {execution_result}")
+        
+        except httpx.HTTPStatusError as http_err:
+            error_content = http_err.response.text
+            logger.error(f"SchedulerService: HTTP error calling target MCP for task {task_id}: {http_err}. Response: {error_content}", exc_info=True)
+            await self.update_task_status_in_db(task_id, ScheduledTaskStatus.FAILED, result={"error": f"HTTP error: {http_err}", "details": error_content}, db_session=db_session)
+        except httpx.RequestError as req_err:
+            logger.error(f"SchedulerService: Request error calling target MCP for task {task_id}: {req_err}", exc_info=True)
+            await self.update_task_status_in_db(task_id, ScheduledTaskStatus.FAILED, result={"error": f"Request error: {str(req_err)}"}, db_session=db_session)
+        except Exception as e:
+            logger.error(f"SchedulerService: Unexpected error calling target MCP for task {task_id}: {e}", exc_info=True)
+            await self.update_task_status_in_db(task_id, ScheduledTaskStatus.FAILED, result={"error": f"Unexpected error: {str(e)}"}, db_session=db_session)
 
     def _get_mcp_base_url(self, platform: TargetPlatform) -> Optional[str]:
-        if platform == TargetPlatform.LINKEDIN:
+        if platform == TargetPlatform.EMAIL:
+            return settings.MCP_EMAIL_BASE_URL
+        elif platform == TargetPlatform.LINKEDIN:
             return settings.MCP_LINKEDIN_BASE_URL
         elif platform == TargetPlatform.X_TWITTER:
             return settings.MCP_X_BASE_URL
+        # ... add other platforms from settings
+        elif platform == TargetPlatform.FACEBOOK:
+            return settings.MCP_FACEBOOK_BASE_URL
+        elif platform == TargetPlatform.INSTAGRAM:
+            return settings.MCP_INSTAGRAM_BASE_URL
+        elif platform == TargetPlatform.WORDPRESS:
+            return settings.MCP_WORDPRESS_BASE_URL
+        logger.warning(f"SchedulerService: No base URL configured for platform: {platform.value}")
         return None
-
 
 def get_scheduler_service(db: Session = Depends(get_db)) -> SchedulerService:
     return SchedulerService(db=db)

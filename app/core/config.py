@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # Base URLs for other MCPs (to be called by the scheduler worker)
     # These should be populated from environment variables in a real deployment
+    MCP_EMAIL_BASE_URL: str = "http://localhost:8001/api/v1"  # Example, assuming email MCP runs on 8001
     MCP_LINKEDIN_BASE_URL: str = "http://localhost:8002/api/v1" # Example
     MCP_X_BASE_URL: str = "http://localhost:8003/api/v1" # Example
     MCP_FACEBOOK_BASE_URL: str = "http://localhost:8004/api/v1" # Example
