@@ -63,14 +63,14 @@ class SchedulerService:
         task_id = str(uuid.uuid4())
         logger.info(f"SchedulerService: create_task called for task_id (generated): {task_id}, type: {task_in.task_type}")
         
-        # Normalize platform_name to lowercase to match PostgreSQL ENUM conventions
-        normalized_platform_name = task_in.platform_identifier.platform_name.value.lower()
-        logger.info(f"SchedulerService: Normalized platform_name to: {normalized_platform_name}")
+        # Ensure platform_name is the lowercase string value from the Enum
+        platform_name_value = task_in.platform_identifier.platform_name.value
+        logger.info(f"SchedulerService: Value of platform_name from Enum for DB insertion: {platform_name_value}")
 
         db_task = ScheduledTaskTable(
             task_id=task_id,
             genia_user_id=task_in.genia_user_id,
-            platform_name=normalized_platform_name, # Use normalized value
+            platform_name=platform_name_value, # Use the direct lowercase string value from Enum
             account_id=task_in.platform_identifier.account_id,
             scheduled_at_utc=task_in.scheduled_at_utc,
             task_payload_json=task_in.task_payload.model_dump_json(),
@@ -118,7 +118,7 @@ class SchedulerService:
             query = query.filter(ScheduledTaskTable.status == status)
         if platform_name:
             # When querying, ensure we also use the lowercase value if the input is an Enum member
-            query = query.filter(ScheduledTaskTable.platform_name == platform_name.value.lower())
+            query = query.filter(ScheduledTaskTable.platform_name == platform_name.value)
         return query.all()
 
     async def get_task_by_id(self, task_id: str) -> Optional[ScheduledTaskTable]:

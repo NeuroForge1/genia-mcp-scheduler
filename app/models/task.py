@@ -13,7 +13,7 @@ class TargetPlatform(str, Enum):
     FACEBOOK = "facebook"
     INSTAGRAM = "instagram"
     WORDPRESS = "wordpress"
-    EMAIL = "email" # Added for Email MCP
+    EMAIL = "email" # Values are now explicitly lowercase
 
 class ScheduledTaskStatus(str, Enum):
     PENDING = "pending"
@@ -23,7 +23,7 @@ class ScheduledTaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 class PlatformIdentifier(BaseModel):
-    platform_name: TargetPlatform
+    platform_name: TargetPlatform # This will now use the lowercase enum values
     account_id: str # ID of the account specific to that platform (e.g., LinkedIn URN, X user ID, FB Page ID, or GENIA user ID for generic email)
 
 class ScheduledTaskPayload(BaseModel):
