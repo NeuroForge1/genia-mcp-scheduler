@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy
+psycopg2-binary # For PostgreSQL, if used later. For SQLite, this is not strictly needed now but good to list if transitioning.
+apscheduler
+pydantic
+pydantic-settings
+python-jose[cryptography]
+requests # For calling other MCPs
+httpx # Alternative async HTTP client
+
+# For SQLite, ensure Python's built-in sqlite3 is available (usually is)
+# No explicit pip install needed for sqlite3 itself with standard Python installs.
+
