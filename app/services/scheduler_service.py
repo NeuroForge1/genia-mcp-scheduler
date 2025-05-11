@@ -63,10 +63,14 @@ class SchedulerService:
         task_id = str(uuid.uuid4())
         logger.info(f"SchedulerService: create_task called for task_id (generated): {task_id}, type: {task_in.task_type}")
         
+        # Normalize platform_name to lowercase to match PostgreSQL ENUM conventions
+        normalized_platform_name = task_in.platform_identifier.platform_name.value.lower()
+        logger.info(f"SchedulerService: Normalized platform_name to: {normalized_platform_name}")
+
         db_task = ScheduledTaskTable(
             task_id=task_id,
             genia_user_id=task_in.genia_user_id,
-            platform_name=task_in.platform_identifier.platform_name,
+            platform_name=normalized_platform_name, # Use normalized value
             account_id=task_in.platform_identifier.account_id,
             scheduled_at_utc=task_in.scheduled_at_utc,
             task_payload_json=task_in.task_payload.model_dump_json(),
@@ -113,7 +117,8 @@ class SchedulerService:
         if status:
             query = query.filter(ScheduledTaskTable.status == status)
         if platform_name:
-            query = query.filter(ScheduledTaskTable.platform_name == platform_name)
+            # When querying, ensure we also use the lowercase value if the input is an Enum member
+            query = query.filter(ScheduledTaskTable.platform_name == platform_name.value.lower())
         return query.all()
 
     async def get_task_by_id(self, task_id: str) -> Optional[ScheduledTaskTable]:
@@ -188,7 +193,9 @@ class SchedulerService:
         mcp_request_body = task_payload_dict.get("mcp_request_body")
         # user_platform_tokens = task_payload_dict.get("user_platform_tokens") # May be needed for some MCPs
 
-        target_mcp_base_url = self._get_mcp_base_url(TargetPlatform(task.platform_name)) # Get base URL from config
+        # platform_name in DB is already lowercase. Convert to TargetPlatform Enum for logic.
+        platform_enum_member = TargetPlatform(task.platform_name) # This will work if task.platform_name is 'email', 'whatsapp' etc.
+        target_mcp_base_url = self._get_mcp_base_url(platform_enum_member) # Get base URL from config
 
         if not target_mcp_base_url:
             logger.error(f"SchedulerService: Target MCP base URL not configured for platform {task.platform_name} (task {task_id}).")
@@ -224,13 +231,17 @@ class SchedulerService:
             await self.update_task_status_in_db(task_id, ScheduledTaskStatus.FAILED, result={"error": f"Unexpected error: {str(e)}"}, db_session=db_session)
 
     def _get_mcp_base_url(self, platform: TargetPlatform) -> Optional[str]:
+        # platform is now an Enum member, e.g. TargetPlatform.EMAIL
+        # settings should ideally store keys like "MCP_EMAIL_BASE_URL"
+        # The TargetPlatform enum values are 'email', 'linkedin', etc. (lowercase)
+        # So we need to map them correctly to settings attributes.
+
         if platform == TargetPlatform.EMAIL:
             return settings.MCP_EMAIL_BASE_URL
         elif platform == TargetPlatform.LINKEDIN:
             return settings.MCP_LINKEDIN_BASE_URL
         elif platform == TargetPlatform.X_TWITTER:
             return settings.MCP_X_BASE_URL
-        # ... add other platforms from settings
         elif platform == TargetPlatform.FACEBOOK:
             return settings.MCP_FACEBOOK_BASE_URL
         elif platform == TargetPlatform.INSTAGRAM:
