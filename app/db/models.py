@@ -15,11 +15,14 @@ class ScheduledTaskTable(Base):
     task_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) # For SQLite compatibility
     genia_user_id = Column(String, index=True, nullable=False)
     
-    platform_name = Column(SQLAlchemyEnum(TargetPlatform), nullable=False)
+    # Ensure native_enum=True for PostgreSQL to use native ENUM types
+    # The TargetPlatform Enum in Python now uses lowercase values e.g. "email"
+    platform_name = Column(SQLAlchemyEnum(TargetPlatform, name="targetplatform", native_enum=True), nullable=False)
     account_id = Column(String, nullable=False) # Account ID on the target platform
 
     scheduled_at_utc = Column(DateTime, nullable=False, index=True)
-    status = Column(SQLAlchemyEnum(ScheduledTaskStatus), nullable=False, default=ScheduledTaskStatus.PENDING, index=True)
+    # Ensure native_enum=True for PostgreSQL to use native ENUM types
+    status = Column(SQLAlchemyEnum(ScheduledTaskStatus, name="scheduledtaskstatus", native_enum=True), nullable=False, default=ScheduledTaskStatus.PENDING, index=True)
     
     task_payload_json = Column(Text, nullable=False) 
     user_platform_tokens_json = Column(Text, nullable=False) 
@@ -31,5 +34,5 @@ class ScheduledTaskTable(Base):
     task_type = Column(String, nullable=True, index=True, default="generic_task") # Added task_type field
 
     def __repr__(self):
-        return f"<ScheduledTaskTable(task_id=\\'{self.task_id}\\' status=\\'{self.status}\\' type=\\'{self.task_type}\\')>"
+        return f"<ScheduledTaskTable(task_id='{self.task_id}' status='{self.status}' type='{self.task_type}')>"
 

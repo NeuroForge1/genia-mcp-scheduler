@@ -67,3 +67,28 @@ Funcionalidades principales:
 - **Variables de Entorno**: Asegurar que todas las configuraciones sensibles (claves de API, URLs de bases de datos, secretos) se gestionen a través de variables de entorno en lugar de estar codificadas directamente.
 
 
+
+
+
+## 6. Depuración del Despliegue en Render (2025-05-11)
+
+Durante el despliegue inicial del `genia-mcp-scheduler` en Render, se encontraron problemas persistentes de autenticación con la base de datos PostgreSQL creada en la misma plataforma.
+
+- **Error Inicial**: Los logs de Render mostraban repetidamente: `FATAL: password authentication failed for user "genia_mcp_scheduler_db_user"`.
+- **Verificaciones Realizadas**:
+    - Se confirmó la contraseña correcta (`1txjzQitwyfpUcKSEM6sT5jEOkie4vDg`) directamente desde el dashboard de Render.
+    - Se verificó que se estuviera utilizando la "Internal Database URL".
+- **Diagnóstico Avanzado**:
+    - Se modificó `app/db/session.py` para imprimir en los logs de Render los valores de las variables de entorno `DATABASE_URL` y `SCHEDULER_DATABASE_URL` que la aplicación estaba leyendo al iniciarse.
+    - Los logs de diagnóstico revelaron que ambas variables de entorno estaban **corruptas y contenían múltiples URLs de conexión concatenadas** (ej. `postgresql://...postgresql://...`). Esto ocurría probablemente debido a múltiples ediciones o copias/pegas incorrectas en el dashboard de Render sin borrar el contenido previo de las variables.
+- **Solución Aplicada**:
+    - Se instruyó al usuario para que, en el dashboard de Render, para el servicio `genia-mcp-scheduler`:
+        1.  Borrara completamente el contenido de la variable de entorno `DATABASE_URL`.
+        2.  Pegara la "Internal Database URL" correcta y única: `postgresql://genia_mcp_scheduler_db_user:1txjzQitwyfpUcKSEM6sT5jEOkie4vDg@dpg-d0gdkli4d50c73fo8tug-a/genia_mcp_scheduler_db`.
+        3.  Realizara el mismo proceso para la variable `SCHEDULER_DATABASE_URL`.
+- **Resultado**:
+    - Tras limpiar y configurar correctamente la variable `DATABASE_URL`, el servicio se inició exitosamente y pudo conectarse a la base de datos principal.
+    - Los logs de diagnóstico confirmaron que `DATABASE_URL` ahora era leída correctamente por la aplicación.
+    - Se observó que `SCHEDULER_DATABASE_URL` aún aparecía corrupta en los logs (ya que el usuario solo corrigió `DATABASE_URL` inicialmente). Se recomendó al usuario aplicar la misma limpieza a `SCHEDULER_DATABASE_URL` para asegurar la funcionalidad completa de APScheduler.
+
+Este incidente subraya la importancia de la gestión cuidadosa de las variables de entorno en las plataformas de despliegue, especialmente al copiar y pegar URLs de conexión, asegurándose de que los campos se limpien adecuadamente antes de introducir nuevos valores.
