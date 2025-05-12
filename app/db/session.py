@@ -21,36 +21,16 @@ def get_db():
         db.close()
 
 def create_db_and_tables():
-    print("Attempting to DROP ENUM type, DROP TABLE, and then recreate all...")
+    # The temporary logic for DROP TYPE and DROP TABLE has been removed.
+    # Now, only Base.metadata.create_all(bind=engine) will be called.
+    # This will create tables if they don't exist, but will not drop them
+    # or their types on subsequent runs, preserving data.
+    print("Attempting Base.metadata.create_all(bind=engine) to create tables if they do not exist...")
     try:
-        with engine.connect() as connection:
-            # 1. Drop the ENUM type targetplatform if it exists
-            # CASCADE will also drop any columns using this type (like in scheduled_tasks)
-            drop_enum_command = text("DROP TYPE IF EXISTS targetplatform CASCADE;")
-            print(f"Attempting to execute: {drop_enum_command}")
-            connection.execute(drop_enum_command)
-            connection.commit()
-            print(f"Raw SQL executed: DROP TYPE IF EXISTS targetplatform CASCADE;")
-
-            # 2. Drop the table scheduled_tasks if it exists (might be redundant if CASCADE worked on ENUM)
-            # but good to have as a safeguard or if ENUM didn't exist.
-            drop_table_command = text("DROP TABLE IF EXISTS scheduled_tasks CASCADE;")
-            print(f"Attempting to execute: {drop_table_command}")
-            connection.execute(drop_table_command)
-            connection.commit()
-            print(f"Raw SQL executed: DROP TABLE IF EXISTS scheduled_tasks CASCADE;")
-        
-        # 3. Create all tables defined in Base. 
-        # SQLAlchemy will now create the ENUM type 'targetplatform' based on the Python Enum (which is lowercase)
-        # and then create the 'scheduled_tasks' table with the column using this newly created ENUM type.
-        print("Attempting Base.metadata.create_all(bind=engine) to recreate ENUM and tables...")
         Base.metadata.create_all(bind=engine)
-        print("Base.metadata.create_all(bind=engine) called. ENUM and tables should be recreated with correct schema.")
-
+        print("Base.metadata.create_all(bind=engine) called. Tables should be created if they didn't exist.")
     except Exception as e:
-        print(f"Error during DB setup (DROP TYPE, DROP TABLE, CREATE ALL): {e}")
-        # Fallback: If main block failed, try create_all again as a last resort.
-        # This might not help if the ENUM is still in a conflicting state, but it's a last attempt.
-        print("Fallback: Attempting Base.metadata.create_all again.")
-        Base.metadata.create_all(bind=engine)
+        print(f"Error during Base.metadata.create_all(bind=engine): {e}")
+        # Depending on the error, you might want to log it or handle it specifically.
+        # For now, just printing the error.
 
